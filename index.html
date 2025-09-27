@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chronic-Logical — Matching Race</title>
+  <style>
+    :root { --bg:#0b0f16; --card:#121826; --ink:#e8eefc; --muted:#9fb2d9; --acc:#5ae0b5; --good:#90ee90; }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b0f16,#121826);color:var(--ink)}
+    header{padding:18px 20px;border-bottom:1px solid #1f2a44;display:flex;gap:12px;align-items:center;justify-content:space-between}
+    .title{font-weight:700;letter-spacing:.3px}
+    main{display:grid;grid-template-columns:360px 1fr;gap:16px;padding:16px;min-height:calc(100vh - 70px)}
+    @media (max-width:1024px){ main{grid-template-columns:1fr} }
+    .panel{background:var(--card);border:1px solid #1f2a44;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+    .panel h2{margin:0;padding:14px 16px;border-bottom:1px solid #1f2a44;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em}
+    .bank{padding:12px;display:flex;flex-wrap:wrap;gap:8px;min-height:120px}
+    .chip{user-select:none;padding:10px 12px;border-radius:999px;background:#1b2437;border:1px solid #27304a;color:#d8e3ff;font-weight:600;cursor:grab}
+    .chip.dragging{opacity:.6}
+    .grid{padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+    .slot{background:#0f1627;border:1px dashed #2c3b66;border-radius:12px;padding:10px;min-height:70px;display:flex;flex-direction:column;gap:8px}
+    .slot-header{font-size:12px;color:#9fb2d9;letter-spacing:.04em}
+    .dropzone{flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .pill{padding:8px 10px;border-radius:999px;background:#1b2437;border:1px solid #27304a;color:#e8eefc;font-weight:600}
+    .slot.correct{border-color:#2b9b66;background:#13221a}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;padding:12px}
+    button{background:#233055;color:#e8eefc;border:1px solid #2e3b66;border-radius:12px;padding:9px 12px;font-weight:700;cursor:pointer}
+    button.primary{background:var(--acc);color:#052b1f;border-color:#35cba0}
+    .stats{display:flex;gap:14px;align-items:center;padding:0 12px 12px 12px;color:#bcd0ff}
+    .footer{padding:8px 16px;color:#8ea6e8;font-size:12px}
+    .hidden{display:none}
+    .hint{color:#9fb2d9;font-size:12px}
+    .bg-wrap{position:relative}
+    .bg{max-width:100%;border-radius:12px;opacity:.2}
+    .toast{position:fixed;inset:auto 16px 16px auto;background:#111a2b;color:#dff2ff;border:1px solid #274060;padding:10px 12px;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">Chronic-Logical — Hotel Mystère Edition 🗝️</div>
+    <div id="timer" class="hint">Timer: 00:00</div>
+  </header>
+  <main>
+    <section class="panel" id="bankPanel">
+      <h2>Concierge’s Answer Bank (drag to suites)</h2>
+      <div class="controls">
+        <button id="checkBtn">Check Answers</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div class="stats">
+        <div>Placed: <span id="placedCount">0</span>/<span id="totalCount">0</span></div>
+        <div>Correct: <span id="correctCount">0</span></div>
+      </div>
+      <div class="bank" id="bank"></div>
+      <div class="footer hint">Tip: drag any piece back to the Concierge’s Bank to remove it, drag pieces between slots to reshuffle, or double-click a placed piece to return it to the bank.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Mystère Board</h2>
+      <div class="bg-wrap hidden" id="bgWrap">
+        <img id="bg" class="bg" alt="Background" />
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="footer hint">Configure labels & answers in the CONFIG below. Case-insensitive. Works offline. Host on GitHub Pages.</div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+  const CONFIG = {
+    title: "Chronic-Logical — 50 Slot Race",
+    background: "",
+    labels: [
+      "First HOH","First Veto","First Blockbuster","First Evicted",
+      "Second HOH","Second Veto","Second Blockbuster","Second Evicted",
+      "Third HOH","Third Veto","Third Blockbuster","Third Evicted",
+      "Fourth HOH","Fourth Veto","Fourth Blockbuster","Fourth Evicted",
+      "Fifth HOH","Fifth Veto","Fifth Blockbuster","Fifth Evicted",
+      "Sixth HOH","Sixth Veto","Sixth Blockbuster","Sixth Evicted",
+      "Seventh HOH","Seventh Veto","Seventh Blockbuster","Seventh Evicted",
+      "Eighth HOH","Eighth Veto","Eighth Blockbuster","Eighth Evicted",
+      "First Eliminated",
+      "Ninth HOH","Ninth Veto","Ninth Blockbuster","Ninth Evicted",
+      "Tenth HOH","Tenth Veto","Tenth Blockbuster","Tenth Evicted",
+      "Eleventh HOH","Eleventh Veto","Eleventh Evicted",
+      "Twelfth HOH","Twelfth Veto","Twelfth Evicted",
+      "Thirteenth HOH","Thirteenth Veto","Thirteenth Evicted"
+    ],
+    answers: [
+      "BB Blaster - Vince","Campsite Caper - Ashley","Ransom Note - Kelley","Zae",
+      "BB Break In - Jimmy","Caught Creeping - Kaycee","Puzzling Pints - Adrian","Amy",
+      "Twin Witness News - Lauren","Basement Break In - Keanu","Study the Study - Kelley","Adrian",
+      "Killer Carnival - Rylie","Flee the Scene - Keanu","Safe Crackers - Rylie","Jimmy",
+      "Jack the Dipper - Ava","Elusive Target - Katherine","Jumbo Gemstones - Keanu","Zach",
+      "Party Slasher - Rachel","OTEV the Hogfather - Lauren","Settle the Score - Mickey","Rylie",
+      "Mystere Express - Vince","Wine to Die For - Mickey","Hilltop Heist - Kelley","Katherine",
+      "Mystere Moments - Keanu","Charcuterie Protection Agency - Morgan","Forensic Frenzy - Vince","Mickey",
+      "Rachel","Maniacal Maze - Lauren","BB Comics - Morgan","Key to Safety - Keanu",
+      "Will","The Last Zing - Vince","BB CSI - Morgan","Steal Power Orbs for the Mastermind So He Can Bring His Lair On-Line - Lauren",
+      "Kelley","Wretched Reactor - Morgan","Masterfind - Keanu","Lauren",
+      "Torturous Trials - Vince","Masterpieces - Morgan","Keanu",
+      "Forensi Scope - Morgan","Organized Crime - Morgan","Ava"
+    ]
+  };
+
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  const byId = id => document.getElementById(id);
+  const grid = byId('grid');
+  const bank = byId('bank');
+  const placedCountEl = byId('placedCount');
+  const totalCountEl = byId('totalCount');
+  const correctCountEl = byId('correctCount');
+  const timerEl = byId('timer');
+  const checkBtn = byId('checkBtn');
+  const resetBtn = byId('resetBtn');
+  const toast = byId('toast');
+  const bg = byId('bg');
+  const bgWrap = byId('bgWrap');
+
+  let started=false, startTime=0, timerHandle=null;
+
+  function showToast(msg){ toast.textContent=msg; toast.classList.remove('hidden'); setTimeout(()=>toast.classList.add('hidden'),1800); }
+
+  function fmt(ms){ const s=Math.floor(ms/1000); const m=Math.floor(s/60); const r=s%60; return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`; }
+
+  function tick(){ const now=Date.now(); timerEl.textContent=`Timer: ${fmt(now-startTime)}`; }
+
+  function startTimer(){ if(started) return; started=true; startTime=Date.now(); timerHandle=setInterval(tick,250); showToast('Race started!'); }
+
+  function stop(){ if(timerHandle){ clearInterval(timerHandle); timerHandle=null; } }
+
+  function reset(){ stop(); started=false; timerEl.textContent='Timer: 00:00';
+    document.querySelectorAll('.pill').forEach(p=>p.remove());
+    bank.innerHTML=''; const reshuffled=[...CONFIG.answers]; shuffle(reshuffled); reshuffled.forEach((ans,i)=>bank.appendChild(makeChip(ans,i)));
+    document.querySelectorAll('.slot').forEach(s=>{ s.classList.remove('correct'); s.querySelector('.dropzone').innerHTML=''; });
+    placedCountEl.textContent='0'; correctCountEl.textContent='0';
+    showToast('Reset');
+  }
+
+  function check(){ let correct=0; const zones=[...document.querySelectorAll('.slot')];
+    zones.forEach((slot,idx)=>{
+      const dz=slot.querySelector('.dropzone');
+      const pill=dz.querySelector('.pill');
+      const want=(CONFIG.answers[idx]||'').trim().toLowerCase();
+      const got=pill?pill.dataset.value.trim().toLowerCase():'';
+      slot.classList.remove('correct');
+      if(!pill){ return; }
+      if(got===want){ correct++; slot.classList.add('correct'); }
+    });
+    correctCountEl.textContent=String(correct);
+    if(correct===CONFIG.labels.length){
+      stop();
+      showToast(`Perfect! Finish: ${timerEl.textContent.replace('Timer: ','')}`);
+    } else {
+      showToast(`${correct} of ${CONFIG.labels.length} correct so far… keep going!`);
+    }
+  }
+
+  function makeChip(text,i){ const el=document.createElement('div'); el.className='chip'; el.textContent=text; el.setAttribute('draggable','true'); el.dataset.value=text; el.dataset.i=i; return el; }
+
+  function render(){ document.title=CONFIG.title||document.title; totalCountEl.textContent=String(CONFIG.labels.length);
+    if(CONFIG.background){ bg.src=CONFIG.background; bgWrap.classList.remove('hidden'); }
+    const shuffled=[...CONFIG.answers]; shuffle(shuffled); shuffled.forEach((ans,i)=> bank.appendChild(makeChip(ans,i)) );
+    CONFIG.labels.forEach((label,idx)=>{
+      const slot=document.createElement('div'); slot.className='slot'; slot.dataset.idx=idx;
+      const h=document.createElement('div'); h.className='slot-header'; h.textContent=label; slot.appendChild(h);
+      const dz=document.createElement('div'); dz.className='dropzone'; slot.appendChild(dz);
+      grid.appendChild(slot);
+    });
+  }
+
+  function onDragStart(e){ const t=e.target; if(!(t.classList.contains('chip')||t.classList.contains('pill'))) return; t.classList.add('dragging'); e.dataTransfer.setData('text/plain', t.dataset.value); startTimer(); }
+  function onDragEnd(e){ const t=e.target; if(t.classList.contains('chip')||t.classList.contains('pill')) t.classList.remove('dragging'); }
+  function onDragOver(e){ if(e.target.classList.contains('dropzone')||e.target.classList.contains('bank')){ e.preventDefault(); } }
+  function onDrop(e){ e.preventDefault(); const value=e.dataTransfer.getData('text/plain');
+    const chip=[...document.querySelectorAll('.chip,.pill')].find(c=>c.dataset.value===value);
+    if(!chip) return;
+    if(e.target.id==='bank' || e.currentTarget.id==='bank'){ bank.appendChild(chip); chip.classList.remove('pill'); chip.classList.add('chip'); updatePlaced(); return; }
+    const zone = e.target.classList.contains('dropzone')? e.target : e.target.closest('.dropzone');
+    if(zone){ const existing=zone.querySelector('.pill'); if(existing){ existing.classList.remove('pill'); existing.classList.add('chip'); bank.appendChild(existing); } zone.innerHTML=''; chip.classList.remove('chip'); chip.classList.add('pill'); zone.appendChild(chip); updatePlaced(); }
+  }
+
+  function updatePlaced(){ const placed=document.querySelectorAll('.dropzone .pill').length; placedCountEl.textContent=String(placed); }
+
+  document.addEventListener('dragstart',onDragStart); document.addEventListener('dragend',onDragEnd);
+  document.addEventListener('dragover',onDragOver);
+  document.addEventListener('drop',onDrop);
+  document.addEventListener('dblclick', (e)=>{ const t=e.target; if(t.classList && t.classList.contains('pill')){ t.classList.remove('pill'); t.classList.add('chip'); bank.appendChild(t); updatePlaced(); } });
+  checkBtn.addEventListener('click',check);
+  resetBtn.addEventListener('click',reset);
+  render();
+  </script>
+</body>
+</html>
